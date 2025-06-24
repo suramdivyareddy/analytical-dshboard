@@ -1,115 +1,79 @@
-import React, { useCallback, useState } from 'react';
-import { Upload, FileText, AlertCircle } from 'lucide-react';
-import { processFileUpload } from '../utils/dataAnalysis';
+// src/components/FileUpload.tsx
+import React, { useState, FC, useCallback } from 'react';
+import { Upload, Loader2 } from 'lucide-react';
+import { uploadAndAnalyzeFile } from '../utils/dataAnalysis'; // FIX: Corrected the import name
+import { UploadResponse } from '../types';
 
 interface FileUploadProps {
-  onFileUpload: (data: any[], kpis: any, dataSummary: string, columns: string[]) => void;
+  onFileUpload: (response: UploadResponse) => void;
+  setLoading: (loading: boolean) => void;
   loading: boolean;
+  setError: (error: string) => void;
 }
 
-export const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, loading }) => {
+export const FileUpload: FC<FileUploadProps> = ({ onFileUpload, setLoading, loading, setError }) => {
   const [dragActive, setDragActive] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [fileName, setFileName] = useState('');
 
   const handleFile = useCallback(async (file: File) => {
-    setError(null);
+    setError('');
     
-    if (!file.name.toLowerCase().endsWith('.csv')) {
-      setError('Please upload a CSV file');
+    if (!file || !file.name.toLowerCase().endsWith('.csv')) {
+      setError('Invalid file type. Please upload a CSV file.');
       return;
     }
 
+    setLoading(true);
     try {
-      const response = await processFileUpload(file);
-      onFileUpload(response.data, response.kpis, response.dataSummary, response.columns);
-    } catch (err) {
-      setError(`Error processing file: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      // Use the correctly named function
+      const response = await uploadAndAnalyzeFile(file);
+      onFileUpload(response);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
-  }, [onFileUpload]);
+  }, [onFileUpload, setLoading, setError]);
 
-  const handleDrag = useCallback((e: React.DragEvent) => {
+  const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true);
-    } else if (e.type === 'dragleave') {
-      setDragActive(false);
-    }
-  }, []);
+    if (e.type === 'dragenter' || e.type === 'dragover') setDragActive(true);
+    else if (e.type === 'dragleave') setDragActive(false);
+  };
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+    if (e.dataTransfer.files?.[0]) {
+      setFileName(e.dataTransfer.files[0].name);
       handleFile(e.dataTransfer.files[0]);
     }
-  }, [handleFile]);
+  };
 
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.preventDefault();
-    if (e.target.files && e.target.files[0]) {
-      handleFile(e.target.files[0]);
+    if (e.target.files?.[0]) {
+        setFileName(e.target.files[0].name);
+        handleFile(e.target.files[0]);
     }
-  }, [handleFile]);
+  };
 
   return (
-    <div className="w-full max-w-2xl mx-auto">
-      <div
-        className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all duration-300 ${
-          dragActive
-            ? 'border-cyan-400 bg-cyan-50'
-            : 'border-gray-300 hover:border-gray-400'
-        } ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-        onDragEnter={handleDrag}
-        onDragLeave={handleDrag}
-        onDragOver={handleDrag}
-        onDrop={handleDrop}
-      >
-        <input
-          type="file"
-          accept=".csv"
-          onChange={handleChange}
-          disabled={loading}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-        />
-        
-        <div className="space-y-4">
-          <div className="flex justify-center">
-            {loading ? (
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-coral-500"></div>
-            ) : (
-              <Upload className="h-12 w-12 text-gray-400" />
-            )}
-          </div>
-          
-          <div>
-            <h3 className="text-lg font-semibold text-slate-700 mb-2">
-              {loading ? 'Processing your data...' : 'Upload Community Data'}
-            </h3>
-            <p className="text-gray-600">
-              Drag and drop your CSV file here, or click to select
-            </p>
-            <p className="text-sm text-gray-500 mt-2">
-              Supports CSV files with community member data
-            </p>
-          </div>
-          
-          {!loading && (
-            <div className="flex items-center justify-center space-x-2 text-sm text-gray-500">
-              <FileText className="h-4 w-4" />
-              <span>CSV files only</span>
-            </div>
-          )}
-        </div>
+     <div className="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+      <div className="flex flex-col sm:flex-row items-center gap-4">
+        <label htmlFor="file-upload" className={`flex-grow w-full flex items-center px-4 py-3 bg-white text-blue-500 rounded-lg shadow-sm tracking-wide border-2 border-dashed  cursor-pointer hover:border-blue-500 hover:text-blue-600 transition-colors ${dragActive ? 'border-blue-500' : 'border-gray-300'}`} onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}>
+          <Upload className="w-6 h-6 mr-3" />
+          <span className="text-base leading-normal">{fileName || "Select or drop your CSV file"}</span>
+        </label>
+        <input id="file-upload" type="file" className="hidden" accept=".csv" onChange={handleChange} disabled={loading} />
       </div>
-      
-      {error && (
-        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center space-x-2 text-red-700">
-          <AlertCircle className="h-5 w-5 flex-shrink-0" />
-          <span className="text-sm">{error}</span>
-        </div>
+      {loading && (
+         <div className="flex items-center justify-center text-gray-500 mt-4">
+            <Loader2 className="animate-spin mr-2 h-5 w-5" />
+            <span>Analyzing your community... This may take a moment.</span>
+         </div>
       )}
     </div>
   );

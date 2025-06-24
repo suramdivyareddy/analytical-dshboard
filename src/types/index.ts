@@ -1,14 +1,6 @@
-export interface CommunityData {
-  id: string;
-  name: string;
-  email: string;
-  join_date: string;
-  last_active: string;
-  source_platform: string;
-  engagement_score: number;
-  location: string;
-}
+// src/types.ts
 
+// Represents the Key Performance Indicators calculated by the backend.
 export interface KPIData {
   totalMembers: number;
   activeMembers: number;
@@ -16,17 +8,20 @@ export interface KPIData {
   topAcquisitionSource: string;
 }
 
+// Represents an AI-generated chart suggestion from the backend.
+// This structure matches the JSON the AI is prompted to create.
 export interface ChartSuggestion {
-  id: string;
+  id?: string; // A unique ID added on the frontend for React keys
   title: string;
-  type: 'bar' | 'line' | 'pie' | 'area';
-  description: string;
-  xAxis?: string;
-  yAxis?: string;
-  dataKey?: string;
+  chart: 'bar' | 'line' | 'pie'; // The chart type
+  x: string; // The column name for the X-axis or Pie chart categories
+  y: string; // The column name for the Y-axis
 }
 
-export interface AIResponse {
+// Represents the entire data payload received from the backend's /api/upload endpoint.
+export interface UploadResponse {
+  rows: any[];
+  columns: string[];
+  kpis: KPIData;
   summary: string;
-  suggestions: ChartSuggestion[];
 }

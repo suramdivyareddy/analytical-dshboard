@@ -6,223 +6,142 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 import google.generativeai as genai
 from datetime import datetime, timedelta
+import re # Import the regular expression module
 
-# Load environment variables
+# --- Setup ---
 load_dotenv()
-
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}})
 
-# Configure Gemini AI
-genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
-model = genai.GenerativeModel('gemini-pro')
+# --- AI Prompt Engineering ---
 
-def calculate_kpis(data):
-    """Calculate key performance indicators from the data"""
-    df = pd.DataFrame(data)
-    
-    total_members = len(df)
-    
-    # Calculate active members (active in last 30 days)
-    active_members = 0
-    if 'last_active' in df.columns:
-        thirty_days_ago = datetime.now() - timedelta(days=30)
-        df['last_active_date'] = pd.to_datetime(df['last_active'], errors='coerce')
-        active_members = len(df[df['last_active_date'] >= thirty_days_ago])
-    
-    # Calculate new members (joined in last 30 days)
-    new_members = 0
-    if 'join_date' in df.columns:
-        thirty_days_ago = datetime.now() - timedelta(days=30)
-        df['join_date_parsed'] = pd.to_datetime(df['join_date'], errors='coerce')
-        new_members = len(df[df['join_date_parsed'] >= thirty_days_ago])
-    
-    # Find top acquisition source
-    top_source = 'Unknown'
-    if 'source_platform' in df.columns:
-        source_counts = df['source_platform'].value_counts()
-        if not source_counts.empty:
-            top_source = source_counts.index[0]
-    
+# FIX: The prompt now explicitly asks for HTML tags for reliability.
+SUMMARY_PROMPT = """
+You are a data storyteller for a community manager. Analyze the provided Key Metrics and Data Snapshot.
+Your task is to provide a 3-bullet point summary that is quick to read and insightful.
+
+**Key Metrics:**
+- Total Members: {totalMembers}
+- Active Members (last 30 days): {activeMembers}
+- New Members (last 30 days): {newMembers}
+- Top Acquisition Source: '{topAcquisitionSource}'
+
+**Instructions:**
+1.  Write exactly **three** bullet points using `<li>` HTML tags.
+2.  Inside each `<li>` tag, start with a keyword wrapped in `<strong>` tags (e.g., <strong>Growth Engine:</strong>).
+3.  Be concise and use numbers to support your points.
+4.  **DO NOT** give strategic recommendations. Stick to the facts.
+5.  Return ONLY the `<li>` tags, without the surrounding `<ul>` tags.
+
+**Data Snapshot:**
+{data_snapshot}
+"""
+
+SUGGESTION_PROMPT = """
+You are a data visualization expert creating chart suggestions for a community dashboard.
+Based on the available columns: {columns}
+
+Suggest the top 3 most impactful charts. Focus on member growth, engagement sources, and activity levels.
+
+For each suggestion, provide:
+1. A descriptive `title`.
+2. A `chart` type from this list: 'bar', 'line', 'pie'.
+3. The column name for the `x` axis.
+4. The column name for the `y` axis.
+
+Return your response ONLY as a valid JSON array of objects.
+Example format:
+[
+    {{"title": "Member Growth by Join Date", "chart": "line", "x": "join_date", "y": "member_id"}},
+    {{"title": "Acquisition by Source", "chart": "pie", "x": "source_platform", "y": "source_platform"}},
+    {{"title": "Top 10 Most Active Members", "chart": "bar", "x": "member_name", "y": "messages_sent"}}
+]
+"""
+
+# --- AI Configuration ---
+try:
+    gemini_api_key = os.getenv('GEMINI_API_KEY')
+    if not gemini_api_key:
+        raise ValueError("GEMINI_API_KEY not found in .env file.")
+    genai.configure(api_key=gemini_api_key)
+    model = genai.GenerativeModel('gemini-1.5-pro-latest')
+except Exception as e:
+    print(f"🔴 FATAL ERROR configuring AI: {e}")
+    exit()
+
+# --- Helper Functions ---
+def calculate_kpis(df):
+    df_copy = df.copy()
+    thirty_days_ago = datetime.now() - timedelta(days=30)
+    df_copy['join_date_dt'] = pd.to_datetime(df_copy['join_date'], errors='coerce')
+    df_copy['last_active_date_dt'] = pd.to_datetime(df_copy['last_active_date'], errors='coerce')
     return {
-        'totalMembers': total_members,
-        'activeMembers': active_members,
-        'newMembers': new_members,
-        'topAcquisitionSource': top_source
+        'totalMembers': len(df_copy),
+        'activeMembers': len(df_copy[df_copy['last_active_date_dt'] >= thirty_days_ago]),
+        'newMembers': len(df_copy[df_copy['join_date_dt'] >= thirty_days_ago]),
+        'topAcquisitionSource': df_copy['source_platform'].mode()[0] if not df_copy['source_platform'].empty else 'N/A'
     }
 
+def get_ai_summary(kpis, df_snapshot):
+    prompt = SUMMARY_PROMPT.format(
+        totalMembers=kpis['totalMembers'],
+        activeMembers=kpis['activeMembers'],
+        newMembers=kpis['newMembers'],
+        topAcquisitionSource=kpis['topAcquisitionSource'],
+        data_snapshot=df_snapshot.to_string()
+    )
+    response = model.generate_content(prompt)
+    
+    # FIX: More robustly convert markdown to HTML as a fallback.
+    # This handles both * and • for bullets, and **text** for bold.
+    text = response.text.strip()
+    text = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', text)
+    text = re.sub(r'^\s*[\*•]\s*', '<li>', text, flags=re.MULTILINE)
+    text = re.sub(r'</li>\s*', '</li>', text) # Clean up newlines after list items
+    
+    # Ensure it's wrapped in <ul> tags for proper rendering
+    if text.startswith('<li>'):
+        return f"<ul>{text}</ul>"
+    return f"<ul><li>{text}</li></ul>" # Wrap even single lines
+
+# --- API Endpoints ---
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
-    """Handle CSV file upload and return parsed data with KPIs"""
+    if 'file' not in request.files: return jsonify({'error': 'No file part in request'}), 400
+    file = request.files['file']
+    if not file or not file.filename.lower().endswith('.csv'): return jsonify({'error': 'Please upload a valid CSV file.'}), 400
+
     try:
-        if 'file' not in request.files:
-            return jsonify({'error': 'No file provided'}), 400
+        df = pd.read_csv(file.stream, encoding='utf-8-sig', sep=',', engine='python')
+        df.columns = df.columns.str.strip()
         
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
-        
-        if not file.filename.lower().endswith('.csv'):
-            return jsonify({'error': 'File must be a CSV'}), 400
-        
-        # Read CSV file
-        df = pd.read_csv(file)
-        data = df.to_dict('records')
-        
-        # Calculate KPIs
-        kpis = calculate_kpis(data)
-        
-        # Prepare data summary for AI
-        data_summary = f"""
-        Dataset Overview:
-        - Total records: {len(data)}
-        - Columns: {', '.join(df.columns.tolist())}
-        - Sample data: {json.dumps(data[:3], default=str)}
-        """
-        
-        return jsonify({
-            'success': True,
-            'data': data,
-            'kpis': kpis,
-            'dataSummary': data_summary,
-            'columns': df.columns.tolist()
-        })
-        
+        required_columns = ['join_date', 'last_active_date', 'source_platform']
+        for col in required_columns:
+            if col not in df.columns: return jsonify({'error': f"CSV missing required column: '{col}'"}), 400
+
+        kpis = calculate_kpis(df)
+        ai_summary = get_ai_summary(kpis, df.head(10))
+
+        return jsonify({"columns": df.columns.tolist(), "rows": df.to_dict('records'), "kpis": kpis, "summary": ai_summary})
     except Exception as e:
+        print(f"Upload error: {e}")
         return jsonify({'error': f'Error processing file: {str(e)}'}), 500
-
-@app.route('/api/summarize', methods=['POST'])
-def generate_summary():
-    """Generate AI narrative summary from data"""
-    try:
-        request_data = request.get_json()
-        data_summary = request_data.get('dataSummary', '')
-        kpis = request_data.get('kpis', {})
-        
-        prompt = f"""
-        You are a community analytics expert. Based on the following community data, provide a comprehensive narrative summary that tells the story of this community's health and performance.
-
-        Data Overview:
-        {data_summary}
-
-        Key Metrics:
-        - Total Members: {kpis.get('totalMembers', 0)}
-        - Active Members: {kpis.get('activeMembers', 0)}
-        - New Members (last 30 days): {kpis.get('newMembers', 0)}
-        - Top Acquisition Source: {kpis.get('topAcquisitionSource', 'Unknown')}
-
-        Please provide:
-        1. A brief overview of community health
-        2. Key insights about growth and engagement
-        3. Notable patterns or trends
-        4. Strategic recommendations
-
-        Format your response with:
-        - Use **bold text** for key metrics and important points
-        - Use bullet points (•) for lists
-        - Keep paragraphs concise and actionable
-        - Focus on business insights, not technical details
-        """
-        
-        response = model.generate_content(prompt)
-        summary = response.text
-        
-        return jsonify({
-            'success': True,
-            'summary': summary
-        })
-        
-    except Exception as e:
-        return jsonify({'error': f'Error generating summary: {str(e)}'}), 500
 
 @app.route('/api/suggest', methods=['POST'])
 def suggest_charts():
-    """Generate AI chart suggestions based on data structure"""
+    req_data = request.get_json()
+    if not req_data or 'columns' not in req_data: return jsonify({"error": "Missing columns in request"}), 400
+        
     try:
-        request_data = request.get_json()
-        columns = request_data.get('columns', [])
-        sample_data = request_data.get('sampleData', [])
-        
-        prompt = f"""
-        You are a data visualization expert. Based on the following CSV columns and sample data, suggest 3-4 meaningful charts that would provide valuable insights for community analytics.
-
-        Available Columns: {', '.join(columns)}
-        Sample Data: {json.dumps(sample_data[:2], default=str)}
-
-        For each suggestion, provide:
-        1. A descriptive title
-        2. Chart type (bar, line, pie, or area)
-        3. Brief description of insights it would reveal
-        4. Relevant data fields to use
-
-        Focus on charts that would be most valuable for:
-        - Understanding member acquisition patterns
-        - Tracking growth trends over time
-        - Analyzing engagement patterns
-        - Identifying key demographics or sources
-
-        Return your response as a JSON array with this exact structure:
-        [
-          {{
-            "id": "unique-id",
-            "title": "Chart Title",
-            "type": "bar|line|pie|area",
-            "description": "What insights this chart reveals",
-            "dataKey": "relevant_column_name"
-          }}
-        ]
-
-        Only return the JSON array, no additional text.
-        """
-        
+        prompt = SUGGESTION_PROMPT.format(columns=req_data.get('columns', []))
         response = model.generate_content(prompt)
-        
-        # Parse the AI response as JSON
-        try:
-            suggestions = json.loads(response.text)
-        except json.JSONDecodeError:
-            # Fallback suggestions if AI response isn't valid JSON
-            suggestions = [
-                {
-                    "id": "source-breakdown",
-                    "title": "Member Acquisition Sources",
-                    "type": "pie",
-                    "description": "Shows distribution of where your members are coming from",
-                    "dataKey": "source_platform"
-                },
-                {
-                    "id": "growth-trend",
-                    "title": "Monthly Growth Trend",
-                    "type": "bar",
-                    "description": "Visualizes member join patterns over time",
-                    "dataKey": "join_date"
-                },
-                {
-                    "id": "activity-timeline",
-                    "title": "Community Activity Over Time",
-                    "type": "line",
-                    "description": "Tracks member activity patterns and engagement trends",
-                    "dataKey": "last_active"
-                }
-            ]
-        
-        return jsonify({
-            'success': True,
-            'suggestions': suggestions
-        })
-        
+        cleaned_response = response.text.strip().replace("```json", "").replace("```", "").strip()
+        json.loads(cleaned_response)
+        return cleaned_response, 200, {'Content-Type': 'application/json'}
     except Exception as e:
-        return jsonify({'error': f'Error generating suggestions: {str(e)}'}), 500
-
-@app.route('/health', methods=['GET'])
-def health_check():
-    """Health check endpoint"""
-    return jsonify({'status': 'healthy', 'message': 'Backend is running'})
+        print(f"Suggest charts error: {e}")
+        return jsonify({"error": "Failed to get valid chart suggestions from AI."}), 500
 
 if __name__ == '__main__':
-    # Check if API key is configured
-    if not os.getenv('GEMINI_API_KEY'):
-        print("WARNING: GEMINI_API_KEY not found in environment variables")
-        print("Please create a .env file with your Gemini API key")
-    
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    app.run(debug=True, port=5001)
+
