@@ -1,4 +1,5 @@
 # Analytical Storytelling Dashboard
+<img width="707" alt="Screenshot 2025-06-24 at 11 39 50 AM" src="https://github.com/user-attachments/assets/68382bb8-629f-45de-b2f3-b060a4c1f8d4" />
 
 A sophisticated web application that transforms raw community data into compelling insights using AI-powered analytics. Upload a CSV file and instantly get KPIs, narrative summaries, and intelligent chart suggestions.
 
