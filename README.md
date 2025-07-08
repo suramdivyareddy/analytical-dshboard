@@ -98,5 +98,4 @@ The application is built with modern web technologies:
 For production deployment:
 1. Set up environment variables securely
 2. Configure CORS for your domain
-3. Use a production WSGI server like Gunicorn
-4. Set up proper error handling and logging
+3. Set up proper error handling and logging
