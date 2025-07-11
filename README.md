@@ -36,14 +36,14 @@ python3 -m venv venv
 source venv/bin/activate  # On Windows: .\venv\Scripts\activate
 
 # Install dependencies
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 
 # Configure environment variables
 cp .env.example .env
 # Edit .env and add your Gemini API key
 
 # Run the Flask server
-python app.py
+python3 app.py
 ```
 
 ### 2. Frontend Setup
