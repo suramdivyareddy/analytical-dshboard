@@ -1,12 +1,33 @@
-# Ignore documentation, tests, and other non-essential files from packages
-**/pandas/tests/*
-**/numpy/tests/*
-**/pandas/doc/*
-**/numpy/doc/*
-
-# Ignore compiled object files and C/C++ source code we don't need at runtime
+# Ignore compiled files and developer/build artifacts
 **/*.so
 **/*.pyc
 **/*.c
 **/*.cpp
 **/*.h
+**/*.pyd
+**/README
+**/README.md
+
+# Be extremely aggressive with pandas and numpy
+**/pandas/tests/*
+**/pandas/doc/*
+**/pandas/io/formats/templates/*
+**/pandas/_libs/src/*
+**/numpy/tests/*
+**/numpy/doc/*
+**/numpy/core/tests/*
+**/numpy/distutils/*
+**/numpy/f2py/tests/*
+**/numpy/fft/tests/*
+**/numpy/lib/tests/*
+**/numpy/linalg/tests/*
+**/numpy/ma/tests/*
+**/numpy/matrixlib/tests/*
+**/numpy/polynomial/tests/*
+**/numpy/random/tests/*
+**/numpy/testing/tests/*
+**/numpy/typing/tests/*
+
+# Also be aggressive with google-generativeai in case it has large examples
+**/google/generativeai/examples/*
+**/google/generativeai/notebooks/*
