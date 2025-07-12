@@ -3,6 +3,7 @@
 
 A sophisticated web application that transforms raw community data into compelling insights using AI-powered analytics. Upload a CSV file and instantly get KPIs, narrative summaries, and intelligent chart suggestions.
 
+Try it out here : https://analytical-dshboard.vercel.app
 ## Features
 
 - **Instant Analysis**: Upload CSV files and get immediate KPI calculations
