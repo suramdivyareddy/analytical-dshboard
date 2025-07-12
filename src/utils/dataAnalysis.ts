@@ -2,8 +2,6 @@
 import axios from 'axios';
 import { ChartSuggestion, UploadResponse, KPIData } from '../types';
 
-const API_BASE_URL = 'http://localhost:5001';
-
 /**
  * Uploads a file and gets the initial dashboard data.
  * This is the primary function to call on file upload.
@@ -14,7 +12,8 @@ export const uploadAndAnalyzeFile = async (file: File): Promise<UploadResponse> 
   formData.append('file', file);
 
   try {
-    const response = await axios.post<UploadResponse>(`${API_BASE_URL}/api/upload`, formData);
+    // The URL is now relative, so it works in both development and production.
+    const response = await axios.post<UploadResponse>('/api/upload', formData);
     if (response.data && response.data.kpis) {
       return response.data;
     } else {
@@ -31,8 +30,8 @@ export const uploadAndAnalyzeFile = async (file: File): Promise<UploadResponse> 
  */
 export const generateChartSuggestions = async (columns: string[]): Promise<ChartSuggestion[]> => {
   try {
-    // The backend now sends pre-validated JSON, which axios will parse automatically.
-    const response = await axios.post<ChartSuggestion[]>(`${API_BASE_URL}/api/suggest`, { columns });
+    // The URL is now relative, so it works in both development and production.
+    const response = await axios.post<ChartSuggestion[]>('/api/suggest', { columns });
     return response.data;
   } catch (err: any) {
     console.error("API Error in generateChartSuggestions:", err);

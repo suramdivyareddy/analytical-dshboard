@@ -15,7 +15,6 @@ CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}})
 
 # --- AI Prompt Engineering ---
 
-# FIX: The prompt now explicitly asks for HTML tags for reliability.
 SUMMARY_PROMPT = """
 You are a data storyteller for a community manager. Analyze the provided Key Metrics and Data Snapshot.
 Your task is to provide a 3-bullet point summary that is quick to read and insightful.
@@ -64,7 +63,8 @@ try:
     if not gemini_api_key:
         raise ValueError("GEMINI_API_KEY not found in .env file.")
     genai.configure(api_key=gemini_api_key)
-    model = genai.GenerativeModel('gemini-1.5-pro-latest')
+    # FIX: Switched to the more efficient 'flash' model to avoid rate limiting.
+    model = genai.GenerativeModel('gemini-1.5-flash-latest')
 except Exception as e:
     print(f"🔴 FATAL ERROR configuring AI: {e}")
     exit()
@@ -92,17 +92,14 @@ def get_ai_summary(kpis, df_snapshot):
     )
     response = model.generate_content(prompt)
     
-    # FIX: More robustly convert markdown to HTML as a fallback.
-    # This handles both * and • for bullets, and **text** for bold.
     text = response.text.strip()
     text = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', text)
     text = re.sub(r'^\s*[\*•]\s*', '<li>', text, flags=re.MULTILINE)
-    text = re.sub(r'</li>\s*', '</li>', text) # Clean up newlines after list items
+    text = re.sub(r'</li>\s*', '</li>', text)
     
-    # Ensure it's wrapped in <ul> tags for proper rendering
     if text.startswith('<li>'):
         return f"<ul>{text}</ul>"
-    return f"<ul><li>{text}</li></ul>" # Wrap even single lines
+    return f"<ul><li>{text}</li></ul>"
 
 # --- API Endpoints ---
 @app.route('/api/upload', methods=['POST'])
