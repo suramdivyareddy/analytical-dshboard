@@ -1,0 +1,12 @@
+# Ignore documentation, tests, and other non-essential files from packages
+**/pandas/tests/*
+**/numpy/tests/*
+**/pandas/doc/*
+**/numpy/doc/*
+
+# Ignore compiled object files and C/C++ source code we don't need at runtime
+**/*.so
+**/*.pyc
+**/*.c
+**/*.cpp
+**/*.h
