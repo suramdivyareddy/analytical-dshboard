@@ -11,7 +11,14 @@ import re # Import the regular expression module
 # --- Setup ---
 load_dotenv()
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}})
+
+# ========================= THE CHANGE IS HERE =========================
+# We now allow requests from your deployed frontend URL.
+# This tells the browser that it's safe to let your frontend
+# talk to your backend.
+CORS(app, resources={r"/api/*": {"origins": "https://analytical-dshboard-frontend.onrender.com"}})
+# ========================= END OF CHANGE ============================
+
 
 # --- AI Prompt Engineering ---
 
@@ -141,4 +148,3 @@ def suggest_charts():
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
-
